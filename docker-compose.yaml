@@ -1,0 +1,117 @@
+version: '3.9'
+
+services:
+  # 1. PostgreSQL 16 + TimescaleDB
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: postgres-ts
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: supersecret123
+      TIMESCALEDB_TELEMETRY: off
+    command: >
+      postgres -c wal_level=logical
+               -c max_replication_slots=10
+               -c max_wal_senders=10
+               -c shared_preload_libraries=timescaledb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. Apache NiFi (ingestão)
+  nifi:
+    image: apache/nifi:2.0.0
+    container_name: nifi
+    restart: unless-stopped
+    ports:
+      - "8080:8080"      # UI
+      - "8443:8443"      # HTTPS (opcional depois)
+    environment:
+      - NIFI_WEB_HTTP_PORT=8080
+      - NIFI_CLUSTER_IS_NODE=false
+      - NIFI_ELECTION_ALWAYS_START=true
+    volumes:
+      - nifi-data:/opt/nifi/nifi-current/conf
+    mem_limit: 2g
+
+  # 3. ClickHouse
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3
+    container_name: clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # Cliente nativo
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    volumes:
+      - chdata:/var/lib/clickhouse
+    healthcheck:
+      test: wget --spider -q http://localhost:8123/ping || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 4. PeerDB (CDC Postgres → ClickHouse)
+  peerdb:
+    image: peerdbcloud/peerdb:latest
+    container_name: peerdb
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./peerdb.yaml:/config.yaml:ro
+    ports:
+      - "9900:9900"   # UI do PeerDB (opcional)
+
+  # 5. CloudBeaver (DBeaver no navegador)
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    container_name: cloudbeaver
+    restart: unless-stopped
+    ports:
+      - "8976:8080"
+    volumes:
+      - cloudbeaver-workspace:/opt/cloudbeaver/workspace
+
+  # 6. Netdata (monitoramento da VPS inteira)
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata
+    hostname: '{{.Node.ID}}-{{.Task.Slot}}'
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+    environment:
+      - PGID=999
+    ports:
+      - "19999:19999"
+
+volumes:
+  pgdata:
+  chdata:
+  nifi-data:
+  cloudbeaver-workspace:
+  netdataconfig:
+  netdatalib:
+  netdatacache:
