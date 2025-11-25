@@ -4,6 +4,7 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg16
     container_name: postgres-ts
+    pull_policy: always  # Força pull fresco
     restart: unless-stopped
     environment:
       POSTGRES_DB: app
@@ -24,10 +25,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   # 2. Apache NiFi (ingestão)
   nifi:
     image: apache/nifi:2.0.0
     container_name: nifi
+    pull_policy: always
     restart: unless-stopped
     ports:
       - "8080:8080" # UI
@@ -39,10 +42,12 @@ services:
     volumes:
       - nifi-data:/opt/nifi/nifi-current/conf
     mem_limit: 2g
+
   # 3. ClickHouse
   clickhouse:
     image: clickhouse/clickhouse-server:25.3
     container_name: clickhouse
+    pull_policy: always
     restart: unless-stopped
     ports:
       - "8123:8123" # HTTP
@@ -56,33 +61,41 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  # 4. PeerDB (COMENTADO TEMPORARIAMENTE - VAMOS CORRIGIR DEPOIS)
-  # peerdb:
-  #   image: peerdbcloud/peerdb:latest
-  #   container_name: peerdb
-  #   restart: unless-stopped
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     clickhouse:
-  #       condition: service_healthy
-  #   volumes:
-  #     - ./peerdb.yaml:/config.yaml:ro
-  #   ports:
-  #     - "9900:9900" # UI do PeerDB (opcional)
+
+  # 4. PeerDB (CDC Postgres → ClickHouse) - IMAGEM OFICIAL CORRIGIDA
+  peerdb:
+    image: peerdbio/peerdb:latest  # Imagem oficial do Docker Hub (confirmada em 2025)
+    container_name: peerdb
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./peerdb.yaml:/config.yaml:ro
+    ports:
+      - "9900:9900" # UI do PeerDB (opcional)
+    environment:
+      - PEERDB_CONFIG_PATH=/config.yaml  # Garante leitura do YAML
+
   # 5. CloudBeaver (DBeaver no navegador)
   cloudbeaver:
     image: dbeaver/cloudbeaver:latest
     container_name: cloudbeaver
+    pull_policy: always
     restart: unless-stopped
     ports:
       - "8976:8080"
     volumes:
       - cloudbeaver-workspace:/opt/cloudbeaver/workspace
+
   # 6. Netdata (monitoramento da VPS inteira)
   netdata:
     image: netdata/netdata:latest
     container_name: netdata
+    pull_policy: always
     hostname: '{{.Node.ID}}-{{.Task.Slot}}'
     restart: unless-stopped
     cap_add:
@@ -100,6 +113,7 @@ services:
       - PGID=999
     ports:
       - "19999:19999"
+
 volumes:
   pgdata:
   chdata:
