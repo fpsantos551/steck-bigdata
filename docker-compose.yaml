@@ -1,5 +1,4 @@
 version: '3.9'
-
 services:
   # 1. PostgreSQL 16 + TimescaleDB
   postgres:
@@ -25,15 +24,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
   # 2. Apache NiFi (ingestão)
   nifi:
     image: apache/nifi:2.0.0
     container_name: nifi
     restart: unless-stopped
     ports:
-      - "8080:8080"      # UI
-      - "8443:8443"      # HTTPS (opcional depois)
+      - "8080:8080" # UI
+      - "8443:8443" # HTTPS (opcional depois)
     environment:
       - NIFI_WEB_HTTP_PORT=8080
       - NIFI_CLUSTER_IS_NODE=false
@@ -41,15 +39,14 @@ services:
     volumes:
       - nifi-data:/opt/nifi/nifi-current/conf
     mem_limit: 2g
-
   # 3. ClickHouse
   clickhouse:
     image: clickhouse/clickhouse-server:25.3
     container_name: clickhouse
     restart: unless-stopped
     ports:
-      - "8123:8123"   # HTTP
-      - "9000:9000"   # Cliente nativo
+      - "8123:8123" # HTTP
+      - "9000:9000" # Cliente nativo
     ulimits:
       nofile: { soft: 262144, hard: 262144 }
     volumes:
@@ -59,22 +56,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # 4. PeerDB (CDC Postgres → ClickHouse)
-  peerdb:
-    image: peerdbcloud/peerdb:latest
-    container_name: peerdb
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    volumes:
-      - ./peerdb.yaml:/config.yaml:ro
-    ports:
-      - "9900:9900"   # UI do PeerDB (opcional)
-
+  # 4. PeerDB (COMENTADO TEMPORARIAMENTE - VAMOS CORRIGIR DEPOIS)
+  # peerdb:
+  #   image: peerdbcloud/peerdb:latest
+  #   container_name: peerdb
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     clickhouse:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./peerdb.yaml:/config.yaml:ro
+  #   ports:
+  #     - "9900:9900" # UI do PeerDB (opcional)
   # 5. CloudBeaver (DBeaver no navegador)
   cloudbeaver:
     image: dbeaver/cloudbeaver:latest
@@ -84,7 +79,6 @@ services:
       - "8976:8080"
     volumes:
       - cloudbeaver-workspace:/opt/cloudbeaver/workspace
-
   # 6. Netdata (monitoramento da VPS inteira)
   netdata:
     image: netdata/netdata:latest
@@ -106,7 +100,6 @@ services:
       - PGID=999
     ports:
       - "19999:19999"
-
 volumes:
   pgdata:
   chdata:
