@@ -4,12 +4,12 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg16
     container_name: postgres-ts
-    pull_policy: always  # Força pull fresco
+    pull_policy: always
     restart: unless-stopped
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
-      POSTGRES_PASSWORD: supersecret123
+      POSTGRES_PASSWORD: supersecret123  # Mude para algo forte!
       TIMESCALEDB_TELEMETRY: off
     command: >
       postgres -c wal_level=logical
@@ -62,25 +62,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # 4. PeerDB (CDC Postgres → ClickHouse) - IMAGEM OFICIAL CORRIGIDA
-  peerdb:
-    image: peerdbio/peerdb:latest  # Imagem oficial do Docker Hub (confirmada em 2025)
-    container_name: peerdb
-    pull_policy: always
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    volumes:
-      - ./peerdb.yaml:/config.yaml:ro
-    ports:
-      - "9900:9900" # UI do PeerDB (opcional)
-    environment:
-      - PEERDB_CONFIG_PATH=/config.yaml  # Garante leitura do YAML
-
-  # 5. CloudBeaver (DBeaver no navegador)
+  # 4. CloudBeaver (DBeaver no navegador)
   cloudbeaver:
     image: dbeaver/cloudbeaver:latest
     container_name: cloudbeaver
@@ -91,7 +73,7 @@ services:
     volumes:
       - cloudbeaver-workspace:/opt/cloudbeaver/workspace
 
-  # 6. Netdata (monitoramento da VPS inteira)
+  # 5. Netdata (monitoramento da VPS inteira)
   netdata:
     image: netdata/netdata:latest
     container_name: netdata
