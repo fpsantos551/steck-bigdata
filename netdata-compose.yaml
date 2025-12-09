@@ -1,0 +1,35 @@
+services:
+  netdata:
+    image: 'netdata/netdata:latest'
+    container_name: netdata
+    hostname: netdata
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - 'apparmor:unconfined'
+    volumes:
+      - '/proc:/host/proc:ro'
+      - '/sys:/host/sys:ro'
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      - 'netdataconfig:/etc/netdata'
+      - 'netdatalib:/var/lib/netdata'
+      - 'netdatacache:/var/cache/netdata'
+    environment:
+      - PGID=999
+    ports:
+      - '19999:19999'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.netdata.rule=Host(`netdata.tirusassessoria.com`)
+      - traefik.http.routers.netdata.entrypoints=websecure
+      - traefik.http.routers.netdata.tls.certresolver=letsencrypt
+      - traefik.http.services.netdata.loadbalancer.server.port=19999
+      - traefik.http.routers.netdata-http.rule=Host(`netdata.tirusassessoria.com`)
+      - traefik.http.routers.netdata-http.entrypoints=web
+      - traefik.http.routers.netdata-http.middlewares=redirect-to-https
+      - traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https
+volumes:
+  netdataconfig: null
+  netdatalib: null
+  netdatacache: null
