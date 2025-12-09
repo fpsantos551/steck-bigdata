@@ -1,0 +1,144 @@
+version: '3.9'
+services:
+  minio:
+    image: minio/minio
+    container_name: peerdb_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: miniouser
+      MINIO_ROOT_PASSWORD: miniopass
+    command: 'server /data --console-address ":9001"'
+    ports:
+      - '9100:9000'
+      - '9101:9001'
+    volumes:
+      - 'minio_data:/data'
+  catalog:
+    image: 'postgres:15-alpine'
+    container_name: peerdb_catalog
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - '9901:5432'
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+        - '-U'
+        - postgres
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - 'catalog_data:/var/lib/postgresql/data'
+  temporal:
+    image: 'temporalio/auto-setup:1.29'
+    container_name: peerdb_temporal
+    restart: unless-stopped
+    depends_on:
+      catalog:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: postgres
+      POSTGRES_SEEDS: catalog
+    ports:
+      - '7233:7233'
+  flow_api:
+    image: 'ghcr.io/peerdb-io/flow-api:stable-v0.35.5'
+    container_name: peerdb_flow_api
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      PEERDB_CATALOG_HOST: catalog
+      PEERDB_CATALOG_PORT: 5432
+      PEERDB_CATALOG_USER: postgres
+      PEERDB_CATALOG_PASSWORD: postgres
+      PEERDB_CATALOG_DATABASE: postgres
+      TEMPORAL_HOST_PORT: 'temporal:7233'
+      PEERDB_CLICKHOUSE_AWS_S3_BUCKET_NAME: peerdbbucket
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_ACCESS_KEY_ID: miniouser
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_SECRET_ACCESS_KEY: miniopass
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_REGION: us-east-1
+      PEERDB_CLICKHOUSE_AWS_ENDPOINT_URL_S3: 'http://minio:9000'
+    ports:
+      - '8112:8112'
+      - '8113:8113'
+  flow_worker:
+    image: 'ghcr.io/peerdb-io/flow-worker:stable-v0.35.5'
+    container_name: peerdb_flow_worker
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      PEERDB_CATALOG_HOST: catalog
+      PEERDB_CATALOG_PORT: 5432
+      PEERDB_CATALOG_USER: postgres
+      PEERDB_CATALOG_PASSWORD: postgres
+      PEERDB_CATALOG_DATABASE: postgres
+      TEMPORAL_HOST_PORT: 'temporal:7233'
+      PEERDB_CLICKHOUSE_AWS_S3_BUCKET_NAME: peerdbbucket
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_ACCESS_KEY_ID: miniouser
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_SECRET_ACCESS_KEY: miniopass
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_REGION: us-east-1
+      PEERDB_CLICKHOUSE_AWS_ENDPOINT_URL_S3: 'http://minio:9000'
+  snapshot_worker:
+    image: 'ghcr.io/peerdb-io/flow-snapshot-worker:stable-v0.35.5'
+    container_name: peerdb_snapshot_worker
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      PEERDB_CATALOG_HOST: catalog
+      PEERDB_CATALOG_PORT: 5432
+      PEERDB_CATALOG_USER: postgres
+      PEERDB_CATALOG_PASSWORD: postgres
+      PEERDB_CATALOG_DATABASE: postgres
+      TEMPORAL_HOST_PORT: 'temporal:7233'
+      PEERDB_CLICKHOUSE_AWS_S3_BUCKET_NAME: peerdbbucket
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_ACCESS_KEY_ID: miniouser
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_SECRET_ACCESS_KEY: miniopass
+      PEERDB_CLICKHOUSE_AWS_CREDENTIALS_AWS_REGION: us-east-1
+      PEERDB_CLICKHOUSE_AWS_ENDPOINT_URL_S3: 'http://minio:9000'
+  peerdb_server:
+    image: 'ghcr.io/peerdb-io/peerdb-server:stable-v0.35.5'
+    container_name: peerdb_server
+    restart: unless-stopped
+    depends_on:
+      catalog:
+        condition: service_healthy
+    environment:
+      PEERDB_CATALOG_HOST: catalog
+      PEERDB_CATALOG_PORT: 5432
+      PEERDB_CATALOG_USER: postgres
+      PEERDB_CATALOG_PASSWORD: postgres
+      PEERDB_CATALOG_DATABASE: postgres
+      PEERDB_FLOW_SERVER_ADDRESS: 'grpc://flow_api:8112'
+    ports:
+      - '9900:9900'
+  peerdb_ui:
+    image: 'ghcr.io/peerdb-io/peerdb-ui:stable-v0.35.5'
+    container_name: peerdb_ui
+    restart: unless-stopped
+    depends_on:
+      flow_api:
+        condition: service_started
+    environment:
+      DATABASE_URL: 'postgres://postgres:postgres@catalog:5432/postgres'
+      PEERDB_FLOW_SERVER_HTTP: 'http://flow_api:8113'
+      NEXTAUTH_SECRET: changeme
+      NEXTAUTH_URL: 'http://localhost:3000'
+    ports:
+      - '3000:3000'
+volumes:
+  catalog_data: null
+  minio_data: null
