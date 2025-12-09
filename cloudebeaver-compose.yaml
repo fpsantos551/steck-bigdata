@@ -1,0 +1,11 @@
+services:
+  cloudbeaver:
+    image: 'dbeaver/cloudbeaver:latest'
+    container_name: cloudbeaver
+    restart: unless-stopped
+    ports:
+      - '8976:8978'
+    volumes:
+      - 'cb:/opt/cloudbeaver/workspace'
+volumes:
+  cb: null
